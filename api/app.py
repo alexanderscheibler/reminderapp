@@ -70,26 +70,27 @@ def parse_reminder_with_ai(user_text: str, client_time_iso: str) -> dict:
         # Fallback only if the input string is malformed or None
         client_date = datetime.now()
 
-    system_prompt = f"""
-        You are a calendar assistant. Local time: {client_date.strftime('%A, %B %d, %Y %H:%M')}.
-        Return ONLY JSON. No prose. No markdown.
+    system_prompt = "You are a precise calendar extraction engine."
 
-        Fields:
-        - "title": string
-        - "date": YYYY-MM-DD or null
-        - "time": HH:MM (24h) or null
-        - "notes": string or null
-
+    # Move ALL rules into the user prompt area
+    combined_user_prompt = f"""
+        Current Local Time: {client_date.strftime('%A, %B %d, %Y %H:%M')}
+        Instruction: Extract reminder details from the text below. 
+        Requirement: Return ONLY a JSON object. No conversation. No markdown.
+        
         Rules:
         - Tomorrow: {(client_date + timedelta(days=1)).strftime('%Y-%m-%d')}
-        - "Next [weekday]": First occurrence after today.
-        - "In X days": {client_date.strftime('%Y-%m-%d')} + X days.
-        - No date/time mentioned? Use null. NEVER invent dates.
-        """
+        - If no date/time: use null.
+        
+        Text to parse: "{user_text}"
+        
+        Expected JSON format:
+        {{"title": "string", "date": "YYYY-MM-DD", "time": "HH:MM", "notes": "string"}}
+    """
 
     messages = cast(List[ChatCompletionMessageParam], [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_text},
+        {"role": "user", "content": combined_user_prompt},
     ])
 
     response = ai_client.chat.completions.create(
