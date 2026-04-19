@@ -1,7 +1,7 @@
 {
   "functions": {
-    "api/login.py":    { "runtime": "python3.12", "maxDuration": 10 },
-    "api/reminder.py": { "runtime": "python3.12", "maxDuration": 60 }
+    "api/login.py":    { "maxDuration": 10 },
+    "api/reminder.py": { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/api/login",    "destination": "/api/login.py" },
