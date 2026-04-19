@@ -1,74 +1,46 @@
-# reminderapp
+# Reminder Agent v3
 
-# Reminder Agent — Vercel Deployment
+## What was fixed
 
-## File structure
-```
-vercel_reminder/
-├── vercel.json
-├── requirements.txt
-├── api/
-│   └── reminder.py
-└── public/
-    └── index.html
+**Vercel build error:** `api/**/*` is not a valid Vercel function pattern.
+Functions must be listed explicitly by filename:
+```json
+"api/login.py":    { "runtime": "python3.12" },
+"api/reminder.py": { "runtime": "python3.12" }
 ```
 
-## Deploy steps
-
-### 1. Create a secret token
-Pick any random string as your webhook secret, e.g.:
-```
-openssl rand -hex 16
-```
-Save it — you'll need it in two places.
-
-### 2. Set environment variables in Vercel
-In your Vercel project → Settings → Environment Variables, add:
-
-| Name | Value |
-|------|-------|
-| `AZURE_ENDPOINT` | `https://localai121.services.ai.azure.com/openai/v1/` |
-| `AZURE_API_KEY` | your key from the Azure deployment page |
-| `GMAIL_ADDRESS` | the Gmail you send from |
-| `GMAIL_APP_PW` | 16-character Gmail app password |
-| `EMAIL_TO` | your@proton.me |
-| `WEBHOOK_SECRET` | the random string you generated above |
-
-### 3. Add the secret to index.html
-In `public/index.html`, find this line:
-```js
-const WEBHOOK_SECRET = 'REPLACE_WITH_YOUR_SECRET';
-```
-Replace with the same random string.
-
-### 4. Push to GitHub and connect to Vercel
-```bash
-git init
-git add .
-git commit -m "reminder agent"
-# Create a repo on GitHub, then:
-git remote add origin https://github.com/yourname/reminder-agent.git
-git push -u origin main
-```
-Then in Vercel: New Project → Import from GitHub → select the repo → Deploy.
-
-### 5. Done
-Your app lives at `https://your-project.vercel.app`
-Open it from your phone browser — it works anywhere.
+**Security:** Removed `localStorage` secret (visible in DevTools → Application).
+Now uses an HttpOnly session cookie set server-side — JS cannot read it at all.
 
 ---
 
-## How security works
+## File structure
+```
+├── vercel.json
+├── requirements.txt
+├── api/
+│   ├── login.py       ← issues signed HttpOnly cookie on correct password
+│   └── reminder.py    ← validates cookie, calls Azure + Resend
+└── public/
+    ├── login.html     ← password form
+    └── app.html       ← main UI (no secrets anywhere in JS)
+```
 
-- **Azure API key**: only exists in Vercel env vars, never in code or git
-- **Gmail app password**: same — Vercel env vars only
-- **WEBHOOK_SECRET**: the frontend sends this header on every request;
-  the function rejects anything without it — so random people can't hit
-  your endpoint and burn your Azure credits
-- **HTTPS**: Vercel provides this automatically on all deployments
+## Vercel environment variables
+| Variable | Value |
+|----------|-------|
+| `AZURE_ENDPOINT` | `https://localai121.services.ai.azure.com/openai/v1/` |
+| `AZURE_API_KEY` | from Azure deployment page |
+| `RESEND_API_KEY` | from resend.com dashboard |
+| `FROM_EMAIL` | verified sender in Resend |
+| `EMAIL_TO` | your@proton.me |
+| `APP_PASSWORD` | password you type to log in |
+| `SESSION_SECRET` | run: `openssl rand -hex 32` |
 
-## Gmail App Password setup
-1. myaccount.google.com → Security
-2. Enable 2-Step Verification
-3. Search "App Passwords" → create one named "Reminder Agent"
-4. Copy the 16-character password (spaces included are fine)
+## Deploy
+```bash
+git add .
+git commit -m "v3 - fixed vercel config + secure session auth"
+git push
+```
+Vercel auto-deploys on push.
