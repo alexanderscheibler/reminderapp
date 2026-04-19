@@ -12,6 +12,8 @@ import time
 import uuid
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler
+from typing import List, cast
+from openai.types.chat import ChatCompletionMessageParam
 
 import resend
 from openai import OpenAI
@@ -62,43 +64,60 @@ def verify_token(token: str) -> bool:
 
 def parse_reminder_with_ai(user_text: str, client_time_iso: str) -> dict:
     try:
+        # Catch formatting issues
         client_date = datetime.fromisoformat(client_time_iso.replace('Z', '+00:00'))
-    except Exception:
+    except (ValueError, TypeError):
+        # Fallback only if the input string is malformed or None
         client_date = datetime.now()
 
-    system_prompt = f"""You are a calendar assistant. The user's current local date/time is {client_date.strftime('%A, %B %d, %Y at %H:%M')}.
+    system_prompt = f"""
+        You are a calendar assistant. Local time: {client_date.strftime('%A, %B %d, %Y %H:%M')}.
+        Return ONLY JSON. No prose. No markdown.
 
-Extract reminder details from the user's message and return ONLY valid JSON with these fields:
-- "title": short event title (string)
-- "date": the event date in YYYY-MM-DD format (string)
-- "time": the event time in HH:MM 24h format, or null if not specified
-- "notes": any extra detail worth keeping, or null
+        Fields:
+        - "title": string
+        - "date": YYYY-MM-DD or null
+        - "time": HH:MM (24h) or null
+        - "notes": string or null
 
-Rules:
-- "tomorrow" = {(client_date + timedelta(days=1)).strftime('%Y-%m-%d')}
-- "next [weekday]" = the NEXT upcoming occurrence of that weekday after today
-- "in X days" = today + X days
-- If no time is mentioned, return null for time
-- If no date is mentioned or it is ambiguous, return "date": null
-- NEVER invent a date. If unsure, return null.
-- Return ONLY the JSON object. No explanation. No markdown."""
+        Rules:
+        - Tomorrow: {(client_date + timedelta(days=1)).strftime('%Y-%m-%d')}
+        - "Next [weekday]": First occurrence after today.
+        - "In X days": {client_date.strftime('%Y-%m-%d')} + X days.
+        - No date/time mentioned? Use null. NEVER invent dates.
+        """
+
+    messages = cast(List[ChatCompletionMessageParam], [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_text},
+    ])
 
     response = ai_client.chat.completions.create(
         model=AZURE_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_text},
-        ],
+        messages=messages,
         max_tokens=200,
         temperature=0.1,
     )
 
     raw = response.choices[0].message.content.strip()
-    if raw.startswith("```"):
+
+    # --- HARDENED PARSING ---
+    # 1. Remove Markdown code blocks if present
+    if "```" in raw:
         raw = raw.split("```")[1]
-        if raw.startswith("json"):
+        if raw.lower().startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+
+    # 2. Find the first '{' and last '}' to isolate the JSON object
+    # (Fixes cases where the AI adds "Here is your JSON:")
+    start_idx = raw.find('{')
+    end_idx = raw.rfind('}')
+
+    if start_idx == -1 or end_idx == -1:
+        raise ValueError("No JSON object found in AI response")
+
+    clean_json = raw[start_idx:end_idx + 1].strip()
+    return json.loads(clean_json)
 
 
 def validate_event(parsed: dict, client_time_iso: str):
