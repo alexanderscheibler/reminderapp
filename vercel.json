@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/**/*.py": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     { "source": "/login", "destination": "/public/login.html" },
     { "source": "/",      "destination": "/public/app.html" }
