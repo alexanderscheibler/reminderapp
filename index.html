@@ -109,7 +109,7 @@
 
       if (res.status === 401) {
         // Not logged in. Kick to login page.
-        window.location.replace('/login');
+        window.location.replace('/login.html');
       } else if (res.ok) {
         // Authenticated. Reveal the UI.
         document.getElementById('app-container').style.display = 'flex';
