@@ -99,6 +99,7 @@ def parse_reminder_with_ai(user_text: str, client_time_iso: str) -> dict:
         temperature=0.1,
     )
 
+    print(f"DEBUG AI RAW: '{response.choices[0].message.content}'")
     raw = response.choices[0].message.content.strip()
 
     # --- HARDENED PARSING ---
