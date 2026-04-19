@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remind me</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* Keeping your exact CSS, adding only classes for the new UI states */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f0f0f; --surface: #181818; --border: #2a2a2a;
+    --accent: #c8f060; --accent2: #60c8f0; --muted: #555;
+    --text: #e8e8e8; --subtext: #888; --error: #f06060; --radius: 12px;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; font-weight: 300; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
+  body::before { content: ''; position: fixed; inset: 0; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 40px 40px; opacity: 0.3; pointer-events: none; z-index: 0; }
+  .container { position: relative; z-index: 1; width: 100%; max-width: 620px; display: flex; flex-direction: column; gap: 28px; }
+  header { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 500; }
+  h1 { font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 6vw, 3.2rem); font-weight: 400; line-height: 1.05; letter-spacing: -0.02em; }
+  h1 em { font-style: italic; color: var(--accent); }
+  .subtitle { font-size: 12px; color: var(--subtext); margin-top: 4px; line-height: 1.6; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 14px; transition: border-color 0.2s; }
+  .card:focus-within { border-color: #3a3a3a; }
+  textarea { background: transparent; border: none; outline: none; resize: none; color: var(--text); font-family: 'DM Mono', monospace; font-size: 15px; line-height: 1.65; width: 100%; min-height: 90px; caret-color: var(--accent); }
+  textarea::placeholder { color: var(--muted); }
+  .card-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 14px; }
+  .default-time { font-size: 11px; color: var(--subtext); letter-spacing: 0.05em; }
+  button { background: var(--accent); color: #0f0f0f; border: none; border-radius: 8px; padding: 10px 20px; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
+  button:hover:not(:disabled) { opacity: 0.85; }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* New states */
+  .hidden { display: none !important; }
+  .review-box { background: rgba(96, 200, 240, 0.05); border: 1px solid rgba(96, 200, 240, 0.2); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+  .review-title { font-weight: 500; color: var(--accent2); margin-bottom: 8px; font-size: 14px;}
+  .event-row { display: flex; gap: 12px; font-size: 12px; margin-bottom: 4px; }
+  .event-row .key { color: var(--subtext); min-width: 48px; }
+  .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .status { border-radius: var(--radius); padding: 16px 20px; font-size: 13px; line-height: 1.6; display: none; }
+  .status.visible { display: block; }
+  .status.success { background: rgba(200, 240, 96, 0.07); border: 1px solid rgba(200, 240, 96, 0.25); color: var(--accent); }
+  .status.error { background: rgba(240, 96, 96, 0.07); border: 1px solid rgba(240, 96, 96, 0.25); color: var(--error); }
+  .hint { font-size: 10px; color: var(--muted); text-align: right; margin-top: -16px; }
+  kbd { background: var(--border); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="label">Reminder Agent</div>
+    <h1>What do you need to<br><em>remember tonight?</em></h1>
+    <p class="subtitle" id="authStatus">Checking device trust...</p>
+  </header>
+
+  <div class="card" id="inputCard">
+    <textarea id="reminderInput" placeholder="e.g. call mom tomorrow, dentist next Thursday..." rows="4" autofocus></textarea>
+    <div class="card-footer">
+      <div class="default-time">Default: 7:00 PM</div>
+      <button id="parseBtn" onclick="parseReminder()">Parse Event</button>
+    </div>
+  </div>
+  <p class="hint" id="inputHint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> to parse</p>
+
+  <div class="card hidden" id="reviewCard">
+    <div class="review-box" id="reviewDetails"></div>
+    <div class="card-footer">
+      <button class="btn-outline" onclick="cancelReview()">Cancel</button>
+      <button id="sendBtn" onclick="confirmAndSend()">Confirm & Send</button>
+    </div>
+  </div>
+
+  <div class="status" id="statusBox"></div>
+
+</div>
+
+<script>
+  const API_URL = '/api/reminder';
+  let deviceSecret = localStorage.getItem('reminder_secret');
+  let currentEventDraft = null;
+
+  // Initialize Security
+  if (!deviceSecret) {
+    deviceSecret = prompt("Device not trusted. Enter your Webhook Secret to authorize this browser:");
+    if (deviceSecret) {
+      localStorage.setItem('reminder_secret', deviceSecret);
+      document.getElementById('authStatus').innerText = "Device authorized securely.";
+    } else {
+      document.getElementById('authStatus').innerText = "Device unauthorized. Setup required.";
+    }
+  } else {
+    document.getElementById('authStatus').innerText = "Device securely trusted.";
+  }
+
+  const inputCard = document.getElementById('inputCard');
+  const reviewCard = document.getElementById('reviewCard');
+  const input = document.getElementById('reminderInput');
+  const parseBtn = document.getElementById('parseBtn');
+  const sendBtn = document.getElementById('sendBtn');
+  const status = document.getElementById('statusBox');
+
+  input.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') parseReminder();
+  });
+
+  // Action 1: Parse (LLM)
+  async function parseReminder() {
+    const text = input.value.trim();
+    if (!text || !deviceSecret) return;
+
+    setLoading(parseBtn, true, "Parsing...");
+    clearStatus();
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': deviceSecret },
+        body: JSON.stringify({
+          action: 'parse',
+          text: text,
+          clientTime: new Date().toISOString() // Solves the timezone issue!
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Parsing failed.');
+
+      currentEventDraft = data.event;
+      showReviewStep(currentEventDraft);
+
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setLoading(parseBtn, false, "Parse Event");
+    }
+  }
+
+  // Action 2: Send (Resend API)
+  async function confirmAndSend() {
+    if (!currentEventDraft) return;
+
+    setLoading(sendBtn, true, "Sending...");
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': deviceSecret },
+        body: JSON.stringify({ action: 'send', event: currentEventDraft }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to send.');
+
+      showSuccess();
+      cancelReview(); // Reset UI
+      input.value = '';
+
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setLoading(sendBtn, false, "Confirm & Send");
+    }
+  }
+
+  // UI State Managers
+  function showReviewStep(event) {
+    inputCard.classList.add('hidden');
+    document.getElementById('inputHint').classList.add('hidden');
+    reviewCard.classList.remove('hidden');
+
+    const d = new Date(event.datetime);
+    const dateStr = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+    document.getElementById('reviewDetails').innerHTML = `
+      <div class="review-title">Verify Event</div>
+      <div class="event-row"><span class="key">Event</span><span class="val">${esc(event.title)}</span></div>
+      <div class="event-row"><span class="key">When</span><span class="val">${esc(dateStr)}</span></div>
+      ${event.notes ? `<div class="event-row"><span class="key">Notes</span><span class="val">${esc(event.notes)}</span></div>` : ''}
+    `;
+  }
+
+  function cancelReview() {
+    currentEventDraft = null;
+    reviewCard.classList.add('hidden');
+    inputCard.classList.remove('hidden');
+    document.getElementById('inputHint').classList.remove('hidden');
+    setTimeout(() => input.focus(), 10);
+  }
+
+  function setLoading(btn, on, text) {
+    btn.disabled = on;
+    btn.innerText = text;
+  }
+
+  function clearStatus() { status.className = 'status'; status.innerHTML = ''; }
+  function showSuccess() {
+    status.className = 'status success visible';
+    status.innerHTML = `✓ Reminder successfully scheduled.`;
+    setTimeout(() => clearStatus(), 5000);
+  }
+  function showError(msg) {
+    status.className = 'status error visible';
+    status.innerHTML = `✗ ${esc(msg)}`;
+  }
+  function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+</body>
+</html>
