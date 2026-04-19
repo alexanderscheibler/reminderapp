@@ -1,12 +1,6 @@
 {
-  "functions": {
-    "api/login.py":    { "maxDuration": 10 },
-    "api/reminder.py": { "maxDuration": 60 }
-  },
   "rewrites": [
-    { "source": "/api/login",    "destination": "/api/login.py" },
-    { "source": "/api/reminder", "destination": "/api/reminder.py" },
-    { "source": "/login",        "destination": "/public/login.html" },
-    { "source": "/",             "destination": "/public/app.html" }
+    { "source": "/login", "destination": "/public/login.html" },
+    { "source": "/",      "destination": "/public/app.html" }
   ]
 }
