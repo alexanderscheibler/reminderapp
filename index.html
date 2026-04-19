@@ -93,7 +93,7 @@
 
   async function apiCall(action, extra = {}) {
     // UPDATED: Points to the renamed /api/index backend
-    const res = await fetch('/api/index', {
+    const res = await fetch('/api/app', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
