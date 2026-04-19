@@ -96,11 +96,11 @@
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') parseReminder();
   });
 
-  async function apiCall(action, extra = {}) {
-    const res = await fetch('/api/reminder', {
+async function apiCall(action, extra = {}) {
+    const res = await fetch('/api/index', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',   // sends the HttpOnly cookie automatically
+      credentials: 'same-origin',
       body: JSON.stringify({ action, ...extra }),
     });
 

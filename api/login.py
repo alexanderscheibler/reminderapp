@@ -46,6 +46,8 @@ def json_resp(h, status: int, data: dict, extra_headers=None):
 
 
 class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_json(200, {"status": "Reminder API is alive. Send POST requests."})
 
     def do_OPTIONS(self):
         self.send_response(200)
