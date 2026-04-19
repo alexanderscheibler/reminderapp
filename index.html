@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<div class="container">
+<div class="container" id="app-container" style="display: none;">
 
   <header>
     <div class="label">Reminder Agent</div>
@@ -78,6 +78,30 @@
 </div>
 
 <script>
+  // --- AUTH GATEKEEPER ---
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const res = await fetch('/api/app', {
+        method: 'GET',
+        credentials: 'same-origin'
+      });
+
+      if (res.status === 401) {
+        // Not logged in. Kick to login page.
+        window.location.replace('/login');
+      } else if (res.ok) {
+        // Authenticated. Reveal the UI.
+        document.getElementById('app-container').style.display = 'flex';
+        document.getElementById('reminderInput').focus();
+      }
+    } catch (err) {
+      console.error("Auth check failed.", err);
+      // Failsafe: if the backend is totally unreachable, you might want to show an error
+      document.body.innerHTML = '<p style="text-align:center; margin-top:50px;">Cannot connect to server.</p>';
+    }
+  });
+  // -----------------------
+
   let currentEventDraft = null;
 
   const inputCard  = document.getElementById('inputCard');

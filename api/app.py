@@ -164,7 +164,16 @@ END:VCALENDAR"""
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_json(200, {"status": "Reminder API is alive. Send POST requests."})
+        def do_GET(self):
+            # ── Auth Check for the Frontend ──────────────────────────────────────
+            token = get_session_token(self.headers.get("Cookie", ""))
+            if not token or not verify_token(token):
+                # 401 → UI will catch this and kick them to /login
+                self.send_json(401, {"error": "Not authenticated"})
+                return
+
+            # 200 → Token is valid, UI is allowed to load
+            self.send_json(200, {"status": "Authenticated"})
 
     def do_OPTIONS(self):
         self.send_response(200)
