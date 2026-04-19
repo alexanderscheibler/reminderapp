@@ -78,6 +78,27 @@
 </div>
 
 <script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const res = await fetch('/api/app', {
+        method: 'GET',
+        credentials: 'same-origin'
+      });
+
+      if (res.status === 401) {
+        window.location.replace('/login');
+        return;
+      }
+
+      // If 200 (OK) OR even if it's 500 (Error), show the UI so we can see the app
+      document.getElementById('app-container').style.display = 'flex';
+
+    } catch (err) {
+      // Fallback: Show the UI anyway if the fetch fails entirely
+      document.getElementById('app-container').style.display = 'flex';
+    }
+  });
+
   // --- AUTH GATEKEEPER ---
   document.addEventListener("DOMContentLoaded", async () => {
     try {
