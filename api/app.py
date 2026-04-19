@@ -164,16 +164,23 @@ END:VCALENDAR"""
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        def do_GET(self):
-            # ── Auth Check for the Frontend ──────────────────────────────────────
-            token = get_session_token(self.headers.get("Cookie", ""))
-            if not token or not verify_token(token):
-                # 401 → UI will catch this and kick them to /login
-                self.send_json(401, {"error": "Not authenticated"})
-                return
+        token = get_session_token(self.headers.get("Cookie", ""))
+        if not token or not verify_token(token):
+            # Send raw JSON so we don't rely on the helper that might be failing
+            body = json.dumps({"error": "Not authenticated"}).encode()
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
-            # 200 → Token is valid, UI is allowed to load
-            self.send_json(200, {"status": "Authenticated"})
+        body = json.dumps({"status": "Authenticated"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_OPTIONS(self):
         self.send_response(200)
