@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  /* Keeping your exact CSS, adding only classes for the new UI states */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg: #0f0f0f; --surface: #181818; --border: #2a2a2a;
@@ -29,22 +28,21 @@
   textarea::placeholder { color: var(--muted); }
   .card-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 14px; }
   .default-time { font-size: 11px; color: var(--subtext); letter-spacing: 0.05em; }
+  .default-time span { color: var(--accent2); }
   button { background: var(--accent); color: #0f0f0f; border: none; border-radius: 8px; padding: 10px 20px; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
   button:hover:not(:disabled) { opacity: 0.85; }
   button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  /* New states */
+  .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
   .hidden { display: none !important; }
-  .review-box { background: rgba(96, 200, 240, 0.05); border: 1px solid rgba(96, 200, 240, 0.2); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
-  .review-title { font-weight: 500; color: var(--accent2); margin-bottom: 8px; font-size: 14px;}
+  .review-box { background: rgba(96,200,240,0.05); border: 1px solid rgba(96,200,240,0.2); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+  .review-title { font-weight: 500; color: var(--accent2); margin-bottom: 8px; font-size: 14px; }
   .event-row { display: flex; gap: 12px; font-size: 12px; margin-bottom: 4px; }
   .event-row .key { color: var(--subtext); min-width: 48px; }
-  .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
   .status { border-radius: var(--radius); padding: 16px 20px; font-size: 13px; line-height: 1.6; display: none; }
   .status.visible { display: block; }
-  .status.success { background: rgba(200, 240, 96, 0.07); border: 1px solid rgba(200, 240, 96, 0.25); color: var(--accent); }
-  .status.error { background: rgba(240, 96, 96, 0.07); border: 1px solid rgba(240, 96, 96, 0.25); color: var(--error); }
+  .status.success { background: rgba(200,240,96,.07); border: 1px solid rgba(200,240,96,.25); color: var(--accent); }
+  .status.error   { background: rgba(240,96,96,.07);  border: 1px solid rgba(240,96,96,.25);  color: var(--error); }
   .hint { font-size: 10px; color: var(--muted); text-align: right; margin-top: -16px; }
   kbd { background: var(--border); border-radius: 4px; padding: 1px 5px; }
 </style>
@@ -55,13 +53,13 @@
   <header>
     <div class="label">Reminder Agent</div>
     <h1>What do you need to<br><em>remember tonight?</em></h1>
-    <p class="subtitle" id="authStatus">Checking device trust...</p>
+    <p class="subtitle">Type anything naturally. Default time: <span style="color:var(--accent2)">7:00 PM</span> if unspecified.</p>
   </header>
 
   <div class="card" id="inputCard">
     <textarea id="reminderInput" placeholder="e.g. call mom tomorrow, dentist next Thursday..." rows="4" autofocus></textarea>
     <div class="card-footer">
-      <div class="default-time">Default: 7:00 PM</div>
+      <div class="default-time">Default: <span>7:00 PM</span></div>
       <button id="parseBtn" onclick="parseReminder()">Parse Event</button>
     </div>
   </div>
@@ -70,8 +68,8 @@
   <div class="card hidden" id="reviewCard">
     <div class="review-box" id="reviewDetails"></div>
     <div class="card-footer">
-      <button class="btn-outline" onclick="cancelReview()">Cancel</button>
-      <button id="sendBtn" onclick="confirmAndSend()">Confirm & Send</button>
+      <button class="btn-outline" onclick="cancelReview()">← Edit</button>
+      <button id="sendBtn" onclick="confirmAndSend()">Confirm & Send →</button>
     </div>
   </div>
 
@@ -80,107 +78,102 @@
 </div>
 
 <script>
-  const API_URL = '/api/index';
-  let deviceSecret = localStorage.getItem('reminder_secret');
   let currentEventDraft = null;
 
-  // Initialize Security
-  if (!deviceSecret) {
-    deviceSecret = prompt("Device not trusted. Enter your Webhook Secret to authorize this browser:");
-    if (deviceSecret) {
-      localStorage.setItem('reminder_secret', deviceSecret);
-      document.getElementById('authStatus').innerText = "Device authorized securely.";
-    } else {
-      document.getElementById('authStatus').innerText = "Device unauthorized. Setup required.";
-    }
-  } else {
-    document.getElementById('authStatus').innerText = "Device securely trusted.";
-  }
-
-  const inputCard = document.getElementById('inputCard');
+  const inputCard  = document.getElementById('inputCard');
   const reviewCard = document.getElementById('reviewCard');
-  const input = document.getElementById('reminderInput');
-  const parseBtn = document.getElementById('parseBtn');
-  const sendBtn = document.getElementById('sendBtn');
-  const status = document.getElementById('statusBox');
+  const input      = document.getElementById('reminderInput');
+  const parseBtn   = document.getElementById('parseBtn');
+  const sendBtn    = document.getElementById('sendBtn');
+  const status     = document.getElementById('statusBox');
 
   input.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') parseReminder();
   });
 
-  // Action 1: Parse (LLM)
+  async function apiCall(action, extra = {}) {
+    // UPDATED: Points to the renamed /api/index backend
+    const res = await fetch('/api/index', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ action, ...extra }),
+    });
+
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return null;
+    }
+
+    return res;
+  }
+
   async function parseReminder() {
     const text = input.value.trim();
-    if (!text || !deviceSecret) return;
+    if (!text) return;
 
-    setLoading(parseBtn, true, "Parsing...");
+    setLoading(parseBtn, true, 'Parsing...');
     clearStatus();
 
     try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': deviceSecret },
-        body: JSON.stringify({
-          action: 'parse',
-          text: text,
-          clientTime: new Date().toISOString() // Solves the timezone issue!
-        }),
+      const res = await apiCall('parse', {
+        text,
+        clientTime: new Date().toISOString(),
       });
+      if (!res) return;
 
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Parsing failed.');
+      if (!res.ok || data.error) { showError(data.error || 'Parsing failed.'); return; }
 
       currentEventDraft = data.event;
       showReviewStep(currentEventDraft);
 
-    } catch (err) {
-      showError(err.message);
+    } catch {
+      showError('Could not reach the server.');
     } finally {
-      setLoading(parseBtn, false, "Parse Event");
+      setLoading(parseBtn, false, 'Parse Event');
     }
   }
 
-  // Action 2: Send (Resend API)
   async function confirmAndSend() {
     if (!currentEventDraft) return;
 
-    setLoading(sendBtn, true, "Sending...");
+    setLoading(sendBtn, true, 'Sending...');
 
     try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': deviceSecret },
-        body: JSON.stringify({ action: 'send', event: currentEventDraft }),
-      });
+      const res = await apiCall('send', { event: currentEventDraft });
+      if (!res) return;
 
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Failed to send.');
+      if (!res.ok || data.error) { showError(data.error || 'Failed to send.'); return; }
 
       showSuccess();
-      cancelReview(); // Reset UI
+      cancelReview();
       input.value = '';
 
-    } catch (err) {
-      showError(err.message);
+    } catch {
+      showError('Could not reach the server.');
     } finally {
-      setLoading(sendBtn, false, "Confirm & Send");
+      setLoading(sendBtn, false, 'Confirm & Send →');
     }
   }
 
-  // UI State Managers
   function showReviewStep(event) {
     inputCard.classList.add('hidden');
     document.getElementById('inputHint').classList.add('hidden');
     reviewCard.classList.remove('hidden');
 
     const d = new Date(event.datetime);
-    const dateStr = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const dateStr = d.toLocaleDateString(undefined, {
+      weekday: 'long', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
 
     document.getElementById('reviewDetails').innerHTML = `
-      <div class="review-title">Verify Event</div>
-      <div class="event-row"><span class="key">Event</span><span class="val">${esc(event.title)}</span></div>
-      <div class="event-row"><span class="key">When</span><span class="val">${esc(dateStr)}</span></div>
-      ${event.notes ? `<div class="event-row"><span class="key">Notes</span><span class="val">${esc(event.notes)}</span></div>` : ''}
+      <div class="review-title">Confirm Event</div>
+      <div class="event-row"><span class="key">Event</span><span>${esc(event.title)}</span></div>
+      <div class="event-row"><span class="key">When</span><span>${esc(dateStr)}</span></div>
+      ${event.notes ? `<div class="event-row"><span class="key">Notes</span><span>${esc(event.notes)}</span></div>` : ''}
     `;
   }
 
@@ -192,23 +185,19 @@
     setTimeout(() => input.focus(), 10);
   }
 
-  function setLoading(btn, on, text) {
-    btn.disabled = on;
-    btn.innerText = text;
-  }
-
+  function setLoading(btn, on, text) { btn.disabled = on; btn.textContent = text; }
   function clearStatus() { status.className = 'status'; status.innerHTML = ''; }
   function showSuccess() {
     status.className = 'status success visible';
-    status.innerHTML = `✓ Reminder successfully scheduled.`;
-    setTimeout(() => clearStatus(), 5000);
+    status.innerHTML = '✓ Reminder successfully scheduled — check your Proton inbox.';
+    setTimeout(clearStatus, 6000);
   }
   function showError(msg) {
     status.className = 'status error visible';
     status.innerHTML = `✗ ${esc(msg)}`;
   }
-  function esc(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 </script>
 </body>
